@@ -1,0 +1,53 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { BarChart3, Bot, Building2, CalendarDays, CreditCard, Handshake, PackageCheck, Presentation, IdCard, LayoutDashboard, Lock, Mail } from "lucide-react";
+import { NotificationBadge, useNotifications } from "@/components/Notifications";
+import { cn } from "@/lib/utils";
+
+const items = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/card", label: "My card", icon: IdCard },
+  { href: "/dashboard/email-signature", label: "Email Signature", icon: Mail },
+  { href: "/dashboard/ai", label: "AI agent", icon: Bot, ai: true },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/leads", label: "Leads", icon: Handshake },
+  { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
+  { href: "/dashboard/billing", label: "Plan & billing", icon: CreditCard },
+  { href: "/dashboard/company", label: "Company", icon: Building2 },
+];
+
+export function DashboardNav({ aiLocked = false, admin = false, fulfillmentAdmin = false, employee = false, employeeOnly = false }: { aiLocked?: boolean; admin?: boolean; fulfillmentAdmin?: boolean; employee?: boolean; employeeOnly?: boolean }) {
+  const path = usePathname();
+  const { counts } = useNotifications();
+  const links = [
+    ...(employeeOnly ? [] : items),
+    ...(employee ? [{ href: "/dashboard/employee", label: "My employee profiles", icon: IdCard }] : []),
+    ...(fulfillmentAdmin ? [{ href: "/dashboard/fulfillment", label: "Fulfillment", icon: PackageCheck }] : []),
+    ...(admin ? [{ href: "/dashboard/demos", label: "Demo requests", icon: Presentation }] : []),
+  ];
+  return (
+    <nav aria-label="Dashboard" className="flex gap-1 overflow-x-auto lg:flex-col">
+      {links.map(({ href, label, icon: Icon, ...rest }) => {
+        const ai = "ai" in rest && rest.ai;
+        const active = href === "/dashboard" ? path === href : path.startsWith(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
+              active ? "bg-navy text-white shadow" : "text-ink-2 hover:bg-white hover:text-ink",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+            <NotificationBadge count={href === "/dashboard/leads" ? counts.leads : href === "/dashboard/appointments" ? counts.appointments : href === "/dashboard/company" ? counts.companyLeads : 0} />
+            {ai && aiLocked && <Lock aria-label="AI Card plan" className="ml-auto h-3.5 w-3.5 opacity-60" />}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

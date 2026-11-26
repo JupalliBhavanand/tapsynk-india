@@ -1,0 +1,201 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getEmployeeWorkspace } from "@/lib/employee";
+import QRCode from "qrcode";
+import { ArrowRight, CheckCircle2, Circle, Sparkles } from "lucide-react";
+import { CopyButton } from "@/components/CopyButton";
+import { EmailSignatureOverview } from "@/components/EmailSignatureOverview";
+import { PhysicalCard } from "@/components/PhysicalCard";
+import { DashboardOverviewAnalytics, type OverviewMetricSet } from "@/components/DashboardOverviewAnalytics";
+import { requireDashboardData } from "@/lib/data";
+import { formatDate } from "@/lib/utils";
+import { SITE_URL } from "@/lib/env";
+import { billingLabel, PLANS } from "@/lib/plans";
+import { formatInZone } from "@/lib/slots";
+import { hasAi, isActive, type Appointment } from "@/lib/types";
+
+export default async function DashboardHome() {
+  const data = await requireDashboardData();
+  if (!data.card && !data.company && !data.subscription && (await getEmployeeWorkspace()).cards.length) redirect("/dashboard/employee");
+  const { card, subscription, agent, supabase } = data;
+  const active = isActive(subscription);
+  const link = card ? `${SITE_URL}/c/${card.slug}` : "";
+  const qr = card ? await QRCode.toDataURL(`${link}?s=q`, { margin: 1, width: 360, color: { dark: "#0f1426", light: "#ffffff" } }) : null;
+
+  const asOf = new Date();
+  const today = new Date(asOf);
+  today.setUTCHours(0, 0, 0, 0);
+  const monthStart = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), 1));
+  let orderedAt = card?.created_at ?? asOf.toISOString();
+  let hasOrderDate = false;
+  if (card) {
+    const { data: firstOrder } = await supabase.from("orders").select("created_at").eq("user_id", data.user.id).is("company_id", null).order("created_at", { ascending: true }).limit(1).maybeSingle();
+    orderedAt = firstOrder?.created_at ?? card.created_at;
+    hasOrderDate = Boolean(firstOrder?.created_at);
+  }
+  const periods = {
+    daily: today.toISOString(),
+    monthly: monthStart.toISOString(),
+    yearly: orderedAt,
+  };
+  const overview: Record<keyof typeof periods, OverviewMetricSet> = {
+    daily: { views: 0, saves: 0, ai: 0, upcoming: 0 },
+    monthly: { views: 0, saves: 0, ai: 0, upcoming: 0 },
+    yearly: { views: 0, saves: 0, ai: 0, upcoming: 0 },
+  };
+  if (card) {
+    const kinds = ["view", "save", "ai"] as const;
+    const ranges = Object.entries(periods) as [keyof typeof periods, string][];
+    await Promise.all(ranges.flatMap(([period, start]) => [
+      ...kinds.map(async (kind) => {
+        const { count } = await supabase.from("card_events").select("card_id", { count: "exact", head: true }).eq("card_id", card.id).eq("kind", kind).gte("created_at", start).lte("created_at", asOf.toISOString());
+        overview[period][kind === "view" ? "views" : kind === "save" ? "saves" : "ai"] = count ?? 0;
+      }),
+      (async () => {
+        const { count } = await supabase.from("appointments").select("id", { count: "exact", head: true }).eq("card_id", card.id).eq("status", "confirmed").gte("starts_at", asOf.toISOString()).gte("created_at", start).lte("created_at", asOf.toISOString());
+        overview[period].upcoming = count ?? 0;
+      })(),
+    ]));
+  }
+
+  const { data: upcoming } = card
+    ? await supabase
+        .from("appointments")
+        .select("*")
+        .eq("card_id", card.id)
+        .eq("status", "confirmed")
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at")
+        .limit(4)
+    : { data: [] };
+
+  const steps = [
+    { done: Boolean(card), label: "Create your digital card", href: "/dashboard/card" },
+    { done: Boolean(card?.published), label: "Publish & print your card", href: "/dashboard/card" },
+    // Only AI plans can train the agent, so Virtual Card owners aren't left with a step they can't finish.
+    ...(hasAi(subscription) ? [{ done: Boolean(agent && (agent.knowledge || agent.description)), label: "Train your AI agent", href: "/dashboard/ai" }] : []),
+    { done: active, label: "Choose a plan & ship your smart card", href: "/dashboard/billing" },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+
+  return (
+    <div className="fade-up mx-auto max-w-6xl">
+      <h1 className="text-3xl font-bold tracking-tight">Hi {data.name.split(" ")[0]} 👋</h1>
+      <p className="mt-1 text-muted">Here's how your card is doing.</p>
+
+      {doneCount < steps.length && (
+        <section className="card-surface mt-8 p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold">Get set up</h2>
+            <span className="text-sm font-semibold text-muted">{doneCount}/{steps.length} done</span>
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-bg">
+            <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all" style={{ width: `${(doneCount / steps.length) * 100}%` }} />
+          </div>
+          <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+            {steps.map((s) => (
+              <li key={s.label}>
+                <Link href={s.href} className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 text-sm font-medium transition hover:border-brand/40 hover:bg-brand-soft/40">
+                  {s.done ? <CheckCircle2 className="h-5 w-5 text-success" /> : <Circle className="h-5 w-5 text-line" />}
+                  <span className={s.done ? "text-muted line-through" : ""}>{s.label}</span>
+                  {!s.done && <ArrowRight className="ml-auto h-4 w-4 text-muted" />}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <DashboardOverviewAnalytics metrics={overview} orderedAt={orderedAt} hasOrderDate={hasOrderDate} asOf={asOf.toISOString()} />
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <div className="space-y-6 min-w-0">
+          <section className="card-surface p-6">
+            <h2 className="font-bold">Your card</h2>
+            {card ? (
+              <div className="mt-5 grid items-center gap-6 sm:grid-cols-[1fr_auto]">
+                <div className="[container-type:inline-size]">
+                  <PhysicalCard card={{ ...card, ai: subscription?.tier === "ai" }} />
+                </div>
+                <div className="text-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {qr && <img src={qr} alt="QR code for your card" className="mx-auto h-36 w-36 rounded-xl border border-line" />}
+                  <p className="mt-2 text-xs text-muted">Scan to open</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                  <code className="truncate rounded-lg bg-bg px-3 py-2 font-mono text-xs">{link}</code>
+                  <CopyButton value={link} label="Copy link" />
+                  <Link href={`/c/${card.slug}`} target="_blank" className="btn btn-ghost py-2 text-sm">Open</Link>
+                  <Link href="/dashboard/card" className="btn btn-dark py-2 text-sm">Edit card</Link>
+                </div>
+                {!card.published && <p className="text-sm text-stamp sm:col-span-2">Your card is a draft. Publish it to make it live.</p>}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-dashed border-line p-8 text-center">
+                <p className="text-muted">You haven't created your card yet.</p>
+                <Link href="/dashboard/card" className="btn btn-primary mt-4">Create my card</Link>
+              </div>
+            )}
+          </section>
+          {card && <EmailSignatureOverview card={card} link={link} />}
+        </div>
+
+        <div className="space-y-6">
+          <section className="card-surface p-6">
+            <h2 className="font-bold">Plan</h2>
+            {active && subscription ? (
+              <div className="mt-3">
+                <p className="text-lg font-semibold">
+                  {PLANS[subscription.tier].name} <span className="text-sm font-medium text-muted">· {billingLabel(subscription.billing_interval)}</span>
+                </p>
+                {subscription.current_period_end && (
+                  <p className="text-sm text-muted">
+                    {subscription.status === "trialing" ? "Free month · first charge on" : "Renews"} {formatDate(subscription.current_period_end)}
+                  </p>
+                )}
+                {subscription.pending_tier && subscription.pending_change_at && (
+                  <p className="mt-1 text-sm text-muted">
+                    Switches to {PLANS[subscription.pending_tier].name} on {formatDate(subscription.pending_change_at)}
+                  </p>
+                )}
+                {subscription.tier === "virtual" && (
+                  <div className="mt-4 rounded-xl bg-brand-soft/60 p-4">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold"><Sparkles className="h-4 w-4 text-brand" /> Let an AI answer questions and book meetings from your card.</p>
+                    <div className="mt-3">
+                      <Link href="/dashboard/billing?plan=ai" className="btn btn-primary py-2 text-sm">Explore the AI Card</Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3">
+                <p className="text-sm text-muted">
+                  Choose a card to publish your profile and get your NFC card delivered.
+                </p>
+                <Link href="/dashboard/billing" className="btn btn-primary mt-4">See plans</Link>
+              </div>
+            )}
+          </section>
+          <section className="card-surface p-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold">Next appointments</h2>
+              <Link href="/dashboard/appointments" className="text-sm font-semibold text-brand">View all</Link>
+            </div>
+            {upcoming && upcoming.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {(upcoming as Appointment[]).map((a) => (
+                  <li key={a.id} className="flex items-center justify-between rounded-xl bg-bg px-4 py-3 text-sm">
+                    <span className="font-semibold">{a.name}</span>
+                    <span className="text-muted">{formatInZone(a.starts_at, agent?.timezone || "UTC")}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted">No upcoming bookings yet. Your AI agent books them for you.</p>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,119 @@
+import Link from "next/link";
+import { ExternalLink, Pencil, Plus, Trophy } from "lucide-react";
+import { emptyTotals } from "@/lib/analytics";
+import { getCompanyTeam } from "@/lib/company";
+import { isActive } from "@/lib/types";
+import { initials } from "@/lib/utils";
+import { CompanySetup } from "./CompanySetup";
+import { RemoveCard } from "./RemoveCard";
+
+export default async function CompanyPage({ searchParams }: PageProps<"/dashboard/company">) {
+  const sp = await searchParams;
+  const { company, user, cards, perCard } = await getCompanyTeam();
+
+  if (!company || !isActive(company)) {
+    return (
+      <section className="card-surface p-6 sm:p-8">
+        <h2 className="text-xl font-bold">TapSynk for teams in India</h2>
+        <p className="mt-2 max-w-prose text-muted">Get branded employee cards, shared analytics and a quote for your team size.</p>
+        <Link href="/demo?plan=company" className="btn btn-primary mt-5">Request a team quote</Link>
+      </section>
+    );
+  }
+
+  const full = cards.length >= company.seats;
+  const ranked = [...cards].sort((a, b) => (perCard[b.id]?.view ?? 0) - (perCard[a.id]?.view ?? 0));
+  const size = 20;
+  const pages = Math.max(1, Math.ceil(ranked.length / size));
+  const requested = typeof sp.page === "string" && /^\d+$/.test(sp.page) ? Number(sp.page) : 1;
+  const page = Math.max(1, Math.min(pages, requested));
+  const visibleCards = ranked.slice((page - 1) * size, page * size);
+  const topId = ranked[0] && (perCard[ranked[0].id]?.view ?? 0) > 0 ? ranked[0].id : null;
+
+  return (
+    <div className="space-y-8">
+      <section className="card-surface p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-bold">Employee cards</h2>
+            <p className="text-sm text-muted">{cards.length} of {company.seats} cards used · numbers are the last 30 days</p>
+            <p className="mt-2 text-sm text-muted">Employees sign up with their card’s work email and verify it to manage their profile and view only their own leads and AI appointments.</p>
+          </div>
+          {full ? (
+            <Link href="/dashboard/company/billing" className="btn btn-dark text-sm"><Plus className="h-4 w-4" /> Add more seats</Link>
+          ) : (
+            <Link href="/dashboard/company/cards/new" className="btn btn-primary text-sm"><Plus className="h-4 w-4" /> Add employee card</Link>
+          )}
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-bg">
+          <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.min(100, (cards.length / company.seats) * 100)}%` }} />
+        </div>
+
+        {cards.length === 0 ? (
+          <div className="mt-6 rounded-2xl border border-dashed border-line p-10 text-center">
+            <p className="text-muted">No employee cards yet. Add your first team member.</p>
+            <Link href="/dashboard/company/cards/new" className="btn btn-primary mt-4">Add employee card</Link>
+          </div>
+        ) : (
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wider text-muted">
+                  <th className="pb-3 font-semibold">Employee</th>
+                  <th className="pb-3 text-right font-semibold">Views</th>
+                  <th className="pb-3 text-right font-semibold">Saves</th>
+                  <th className="pb-3 text-right font-semibold">Leads</th>
+                  <th className="pb-3 text-right font-semibold">AI chats</th>
+                  <th className="pb-3 text-right font-semibold">Bookings</th>
+                  <th className="pb-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {visibleCards.map((c) => {
+                  const t = perCard[c.id] ?? emptyTotals();
+                  return (
+                    <tr key={c.id}>
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          {c.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={c.avatar_url} alt="" className="h-9 w-9 rounded-xl object-cover" />
+                          ) : (
+                            <span className="grid h-9 w-9 place-items-center rounded-xl text-xs font-bold text-white" style={{ background: c.accent }}>{initials(c.full_name)}</span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 font-semibold">
+                              {c.full_name}
+                              {c.id === topId && <span className="inline-flex items-center gap-1 rounded-full bg-[#fff4d6] px-2 py-0.5 text-[10px] font-bold text-[#9a6b00]"><Trophy className="h-3 w-3" /> TOP</span>}
+                              {!c.published && <span className="rounded-full bg-bg px-2 py-0.5 text-[10px] font-bold text-muted">DRAFT</span>}
+                            </p>
+                            <p className="truncate text-xs text-muted">{c.job_title || "—"} · /c/{c.slug}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 text-right font-semibold tabular-nums">{t.view}</td>
+                      <td className="py-3 text-right tabular-nums">{t.save}</td>
+                      <td className="py-3 text-right tabular-nums">{t.lead}</td>
+                      <td className="py-3 text-right tabular-nums">{t.ai}</td>
+                      <td className="py-3 text-right tabular-nums">{t.booking}</td>
+                      <td className="py-3">
+                        <div className="flex justify-end gap-1">
+                          <Link href={`/c/${c.slug}`} target="_blank" className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-bg hover:text-ink" aria-label={`Open ${c.full_name}'s card`}><ExternalLink className="h-4 w-4" /></Link>
+                          <Link href={`/dashboard/company/cards/${c.id}`} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-bg hover:text-ink" aria-label={`Edit ${c.full_name}'s card`}><Pencil className="h-4 w-4" /></Link>
+                          <RemoveCard id={c.id} name={c.full_name} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {pages > 1 && <nav aria-label="Company pagination" className="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs"><span className="text-muted">{(page - 1) * size + 1}–{Math.min(page * size, ranked.length)} of {ranked.length} employees</span><div className="flex items-center gap-3">{page > 1 && <Link href={`/dashboard/company?page=${page - 1}`} className="btn btn-ghost py-2 text-xs">Previous</Link>}<span>Page {page} of {pages}</span>{page < pages && <Link href={`/dashboard/company?page=${page + 1}`} className="btn btn-ghost py-2 text-xs">Next</Link>}</div></nav>}
+      </section>
+
+      <CompanySetup initial={company} userId={user.id} profileOnly />
+    </div>
+  );
+}
