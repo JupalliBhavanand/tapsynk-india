@@ -167,7 +167,11 @@ export async function fulfillCheckout(sessionId: string) {
       card_brand: pm?.card?.brand ?? null,
       card_last4: pm?.card?.last4 ?? null,
       shipping_name: shipping?.name ?? session.customer_details?.name ?? null,
-      shipping_address: shipping?.address ?? null,
+      shipping_address: shipping?.address ? {
+        ...shipping.address,
+        phone: session.customer_details?.phone ?? null,
+        email: session.customer_details?.email ?? null,
+      } : null,
     },
     { onConflict: "stripe_session_id", ignoreDuplicates: true },
   );

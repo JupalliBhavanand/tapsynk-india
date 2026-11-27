@@ -10,6 +10,8 @@ import { KeepPlanButton } from "./KeepPlanButton";
 const FULFILLMENT: Record<Order["fulfillment_status"], { label: string; icon: typeof Package }> = {
   processing: { label: "Processing", icon: Package },
   printing: { label: "Printing your card", icon: Package },
+  encoded: { label: "Ready to ship", icon: Package },
+  cancelled: { label: "Cancelled", icon: Package },
   shipped: { label: "Shipped", icon: Truck },
   delivered: { label: "Delivered", icon: CheckCircle2 },
 };

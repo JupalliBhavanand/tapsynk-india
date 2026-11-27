@@ -125,7 +125,7 @@ export interface Order {
   card_last4: string | null;
   shipping_name: string | null;
   shipping_address: ShippingAddress | null;
-  fulfillment_status: "processing" | "printing" | "shipped" | "delivered";
+  fulfillment_status: "processing" | "printing" | "encoded" | "shipped" | "delivered" | "cancelled";
   company_id: string | null;
   quantity: number;
   created_at: string;

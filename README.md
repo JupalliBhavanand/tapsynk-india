@@ -41,7 +41,7 @@ Company enquiries use the `/demo?plan=company` form. Existing company subscripti
 
 1. **Install**: `npm install`, then `cp .env.example .env.local`.
 2. **Supabase**: create a project at supabase.com.
-   - Apply the files under `supabase/migrations/` in order. On an existing database apply any missing migrations through `0011_india_personal_billing.sql` before deploying.
+   - Apply the files under `supabase/migrations/` in order. On an existing database apply any missing migrations through `0012_order_fulfillment.sql` before deploying.
    - Project Settings → API → copy the URL, `anon` key and `service_role` key into `.env.local`.
    - Authentication → URL Configuration → set Site URL to your domain and add `https://YOUR-DOMAIN/auth/callback` (and `http://localhost:3000/auth/callback`) to Redirect URLs.
 3. **Stripe**: copy your secret key. No products to create: TapSynk creates `tapsync_virtual` and `tapsync_ai` products on first checkout, with prices from `src/lib/plans.ts`.
@@ -78,7 +78,7 @@ Apply `supabase/migrations/0010_link_clicks.sql` to enable outbound-link click t
 
 ## Launch checklist
 
-1. Apply all missing Supabase migrations through 0011. Migration 0011 adds the personal card access view and stores the India checkout customer reference.
+1. Apply all missing Supabase migrations through 0012. Migration 0011 adds the personal card access view and stores the India checkout customer reference.
 2. In Vercel, add every variable from `.env.example`, including `GEMINI_API_KEY` and `ADMIN_EMAILS`, and set `NEXT_PUBLIC_SITE_URL` to your real domain (https).
 3. Set `NEXT_PUBLIC_REQUIRE_SUBSCRIPTION=true` for launch.
 4. Confirm the intended Stripe account can accept INR. In test mode, verify both Checkout offers, India e-mandate setup and AI renewal using the [Stripe India test scenarios](https://docs.stripe.com/india-recurring-payments#testing). Verify UPI availability on the account before offering it to customers. Then configure the live Stripe keys, webhook signing secret and billing portal.
@@ -87,6 +87,12 @@ Apply `supabase/migrations/0010_link_clicks.sql` to enable outbound-link click t
 7. In test mode, confirm both receipts and the shipping queue. Cancel the test AI subscription and verify that an account with a paid Virtual Card order still has a live card when AI access ends.
 
 ## Fulfilment
+
+### Live orders workspace
+
+The designated fulfillment staff use `/orders`. It reads paid checkout orders and card profiles from Supabase. Apply migration `0012_order_fulfillment.sql` to enable status, print and NFC verification, carrier, tracking and private notes. Earlier shipping records can lack a checkout phone number or a recorded shipped date. Company cards are selected per profile in the inspector.
+
+The NFC link uses the Vercel production domain when available, with `NEXT_PUBLIC_SITE_URL` as the fallback. Set `TAPSYNK_CARD_PROFILE_ORIGIN` to override the NFC domain when the public cards are served at another origin.
 
 ### Employee sign-in and private workspace
 
